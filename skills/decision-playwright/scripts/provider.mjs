@@ -98,6 +98,8 @@ async function postJson(cfg, body) {
         signal: AbortSignal.timeout(timeout),
       });
     } catch {
+      // Network error or timeout: retry like a 503, then give up.
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 500 * 2 ** attempt)); continue; }
       throw new Error('Decision connection failed; no action executed.');
     }
     if ([429, 503, 529].includes(res.status) && attempt < 2) {
