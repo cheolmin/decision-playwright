@@ -76,7 +76,37 @@ export DECISION_AUTH_SCHEME=          # empty = raw key
 
 Works with an Entra ID token (`DECISION_API_KEY=$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)`) or a proxy such as LiteLLM.
 
-### 3. Azure API Management / AI Gateway (`apim`, unverified)
+### 3. Azure AI Gateway (`aigateway`, verified)
+
+Azure AI Gateway at [ai.gateway.azure.com](https://ai.gateway.azure.com/)
+(`Microsoft.ApiManagement/aigateways`).
+
+```bash
+export DECISION_PROVIDER=aigateway
+export AIGATEWAY_URL=my-gw.eastus2-01.ai.gateway.azure.com   # properties.frontend.defaultHostname
+export AIGATEWAY_API_KEY=...                                 # gateway runtime API key (Bearer)
+export DECISION_MODEL=my-foundry/decision-1-1                # gateway model alias
+# optional: default is /default/models/providers/microsoft/v1/systemone
+export AIGATEWAY_PATH=/default/models/providers/microsoft/v1/systemone
+```
+
+Decision does not advertise a chat route, so register the deployment with the System One path
+and give it an alias (`az aigateway` CLI extension):
+
+```bash
+az aigateway model create -g <gw-rg> --gateway-name <gw> \
+  --foundry-resource-id <foundry-account-id> --deployment <decision-deployment> \
+  -n decision-1-1 --supported-endpoints '["/providers/microsoft/v1/systemone"]'
+az aigateway model-alias create -g <gw-rg> --gateway-name <gw> \
+  -n <provider>-decision-1-1 --routing-name <provider>/decision-1-1 \
+  --backend-model resource-id=<provider>/models/decision-1-1
+az aigateway api-key create -g <gw-rg> --gateway-name <gw> --name dpw
+export AIGATEWAY_API_KEY=$(az aigateway api-key list-secrets -g <gw-rg> --gateway-name <gw> --name dpw --query primaryKey -o tsv)
+```
+
+The model name must be lowercase. The deployment name may not contain `Microsoft`.
+
+### 4. Azure API Management (`apim`, unverified)
 
 ```bash
 export DECISION_PROVIDER=apim
@@ -92,7 +122,7 @@ The API in APIM must forward the `/systemone` operation to the Foundry backend. 
 is not a chat-completions route, so you may need to add the operation by hand. This mode was
 tested only against a mock server.
 
-### 4. TypeSafe Jev (`typesafe`, default)
+### 5. TypeSafe Jev (`typesafe`, default)
 
 ```bash
 export DECISION_PROVIDER=typesafe
@@ -135,7 +165,7 @@ $DPW stop
 ## Test
 
 The test starts a mock System One server and local pages, then runs
-`run → NEEDS_TYPING → type → resume → NEEDS_VERIFICATION` for all four providers and
+`run → NEEDS_TYPING → type → resume → NEEDS_VERIFICATION` for all five providers and
 checks URL path, auth header and `model` of each request.
 
 ```bash

@@ -67,6 +67,7 @@ Set `DECISION_PROVIDER` and the matching variables before you run commands. Run
 - `typesafe`: `TYPESAFE_API_KEY`, optional `TYPESAFE_MODEL` (default `jev-latest`)
 - `foundry`: `FOUNDRY_RESOURCE` or `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `DECISION_DEPLOYMENT`
 - `endpoint`: `DECISION_ENDPOINT_URL`, `DECISION_API_KEY`, `DECISION_MODEL`, optional `DECISION_AUTH_HEADER`, `DECISION_AUTH_SCHEME`
+- `aigateway`: `AIGATEWAY_URL` (gateway hostname), `AIGATEWAY_API_KEY`, `DECISION_MODEL` (alias, e.g. `<provider>/<model>`), optional `AIGATEWAY_PATH`
 - `apim`: `APIM_GATEWAY_URL`, `APIM_SUBSCRIPTION_KEY`, `DECISION_MODEL`, optional `APIM_KEY_HEADER`, `APIM_PATH`
 
 Browser: `DPW_EXECUTABLE_PATH` or `DPW_CHANNEL` (for example `chrome`), `DPW_HEADED=1` to show the window.

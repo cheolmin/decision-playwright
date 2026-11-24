@@ -8,10 +8,14 @@ export function startMock(port = 0) {
     log.push({ path: req.url, headers: req.headers, model: body.model, body });
     const { page, elements } = body.state;
     const q = body.questions;
+    // Like the real API: a choice needs at least 2 criteria.
+    if (Object.values(q).some(x => Object.keys(x.criteria).length < 2)) {
+      return res.writeHead(422, { 'content-type': 'application/json' }).end('{"detail":[{"type":"too_short"}]}');
+    }
     const pick = (name, choice) => {
+      if (!q[name]) return undefined; // the client resolves a sole target without asking
       const ids = Object.keys(q[name].criteria);
-      const probabilities = Object.fromEntries(ids.map(i => [i, i === choice ? 0.9 : 0.1 / Math.max(ids.length - 1, 1)]));
-      if (ids.length === 1) probabilities[choice] = 1;
+      const probabilities = Object.fromEntries(ids.map(i => [i, i === choice ? 0.9 : 0.1 / (ids.length - 1)]));
       return { type: 'choice', choice, confidence: 0.9, probabilities };
     };
     const find = l => elements.find(e => e.label.includes(l))?.index;

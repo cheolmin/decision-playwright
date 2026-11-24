@@ -1,4 +1,4 @@
-// End-to-end test: 4 providers x (run -> NEEDS_TYPING -> type -> resume -> NEEDS_VERIFICATION).
+// End-to-end test: 5 providers x (run -> NEEDS_TYPING -> type -> resume -> NEEDS_VERIFICATION).
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const run = promisify(execFile);
@@ -24,6 +24,7 @@ const cases = {
   foundry: { FOUNDRY_ENDPOINT: m, FOUNDRY_API_KEY: 'k-foundry', DECISION_DEPLOYMENT: 'Microsoft-Decision-1.1', expect: ['/providers/microsoft/v1/systemone', 'api-key', 'k-foundry', 'Microsoft-Decision-1.1'] },
   endpoint: { DECISION_ENDPOINT_URL: m + '/custom/decide', DECISION_API_KEY: 'k-endpoint', DECISION_MODEL: 'decision-proxy', expect: ['/custom/decide', 'authorization', 'Bearer k-endpoint', 'decision-proxy'] },
   apim: { APIM_GATEWAY_URL: m + '/gw', APIM_SUBSCRIPTION_KEY: 'k-apim', DECISION_MODEL: 'Microsoft-Decision-1.1', expect: ['/gw/providers/microsoft/v1/systemone', 'ocp-apim-subscription-key', 'k-apim', 'Microsoft-Decision-1.1'] },
+  aigateway: { AIGATEWAY_URL: m, AIGATEWAY_API_KEY: 'k-aigw', DECISION_MODEL: 'my-foundry/decision-1-1', expect: ['/default/models/providers/microsoft/v1/systemone', 'authorization', 'Bearer k-aigw', 'my-foundry/decision-1-1'] },
 };
 let failed = 0;
 for (const [provider, c] of Object.entries(cases)) {

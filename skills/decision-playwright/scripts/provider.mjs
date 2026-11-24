@@ -38,6 +38,18 @@ export function resolveProvider() {
         model: need('DECISION_MODEL'),
       };
     }
+    case 'aigateway': {
+      // Azure AI Gateway (ai.gateway.azure.com): https://<gw>.<region>.ai.gateway.azure.com/default/models/providers/microsoft/v1/systemone
+      // The model is the gateway alias, e.g. <provider>/<model>.
+      let base = need('AIGATEWAY_URL').replace(/\/$/, '');
+      if (!/^https?:\/\//.test(base)) base = 'https://' + base;
+      return {
+        provider,
+        url: base.endsWith('/systemone') ? base : base + env('AIGATEWAY_PATH', '/default/models/providers/microsoft/v1/systemone'),
+        headers: { Authorization: `Bearer ${need('AIGATEWAY_API_KEY')}` },
+        model: need('DECISION_MODEL'),
+      };
+    }
     case 'apim': {
       // Unverified: APIM must expose the /systemone route of the Foundry backend.
       const gw = need('APIM_GATEWAY_URL').replace(/\/$/, '');
@@ -50,7 +62,7 @@ export function resolveProvider() {
       };
     }
     default:
-      throw new Error(`Unknown DECISION_PROVIDER "${provider}". Use typesafe, foundry, endpoint or apim.`);
+      throw new Error(`Unknown DECISION_PROVIDER "${provider}". Use typesafe, foundry, endpoint, aigateway or apim.`);
   }
 }
 
@@ -138,7 +150,9 @@ export async function decide(state, goal, history) {
   if (!history.length) delete operations.BACK;
   const questions = { operation: { type: 'choice', criteria: operations, instructions: { goal, rules: RULES } } };
   for (const [op, criteria] of Object.entries(targets)) {
-    questions[op.toLowerCase() + '_target'] = { type: 'choice', criteria, instructions: { goal, operation: op, rules: [RULES, TARGET] } };
+    // System One rejects a choice with fewer than 2 criteria (HTTP 422); a sole target needs no question.
+    if (Object.keys(criteria).length < 2) continue;
+    questions[op.toLowerCase() + '_target'] ={ type: 'choice', criteria, instructions: { goal, operation: op, rules: [RULES, TARGET] } };
   }
   const maxText = Number(env('DECISION_MAX_PAGE_CHARS', '12000'));
   const body = {
@@ -155,8 +169,12 @@ export async function decide(state, goal, history) {
   const opAns = validateChoice(result?.answers?.operation, Object.keys(operations));
   const operation = opAns.choice;
   let target = null, targetConfidence = null;
-  if (targets[operation]) {
-    const t = validateChoice(result.answers[operation.toLowerCase() + '_target'], Object.keys(targets[operation]));
+  const ids = targets[operation] ? Object.keys(targets[operation]) : [];
+  if (ids.length === 1) {
+    target = ids[0];
+    targetConfidence = 1;
+  } else if (ids.length) {
+    const t =validateChoice(result.answers[operation.toLowerCase() + '_target'], Object.keys(targets[operation]));
     target = t.choice;
     targetConfidence = t.confidence;
   }
