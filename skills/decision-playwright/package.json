@@ -1,0 +1,11 @@
+{
+  "name": "decision-playwright",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright browser skill: Microsoft-Decision-1.1/Jev clicks, the host agent types.",
+  "bin": { "dpw": "scripts/dpw.mjs" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "playwright-core": "^1.50.0" },
+  "license": "MIT"
+}
