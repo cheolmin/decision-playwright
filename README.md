@@ -144,6 +144,8 @@ node ~/.claude/skills/decision-playwright/scripts/dpw.mjs config
 | `DPW_CHANNEL` | `chrome`, `msedge`, ... (installed browser) |
 | `DPW_HEADED=1` | Show the browser window |
 | `DPW_MAX_STEPS` | Decision steps per run/resume (default 40) |
+| `DPW_MAX_ELEMENTS` | Elements sent to Decision (default 80). On longer pages, elements that match rare goal words or numbers come first, then the visible ones |
+| `DECISION_BLOCKED_MIN` | A `BLOCKED` below this probability, with an empty field on the page, falls back to the 2nd-ranked operation (default 0.8) |
 | `DPW_SESSION` / `--session` | Session name (default `default`) |
 | `DPW_STATE_DIR` | Daemon state folder (default `~/.decision-playwright`) |
 | `DECISION_MAX_PAGE_CHARS` | Page text sent to Decision (default 12000) |
@@ -165,7 +167,8 @@ $DPW stop
 ## Test
 
 The test starts a mock System One server and local pages, then runs
-`run → NEEDS_TYPING → type → resume → NEEDS_VERIFICATION` for all five providers and
+`run → NEEDS_TYPING → type → resume → NEEDS_VERIFICATION` for all five providers,
+checks a 300-link page and the weak-BLOCKED fallback, and
 checks URL path, auth header and `model` of each request.
 
 ```bash

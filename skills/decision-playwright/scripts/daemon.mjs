@@ -22,10 +22,11 @@ context.on('page', p => { page = p; });
 
 const run = { goal: null, history: [], steps: 0, status: 'idle', pending: null };
 const MAX_STEPS = Number(process.env.DPW_MAX_STEPS || 40);
+const MAX_ELEMENTS = Number(process.env.DPW_MAX_ELEMENTS || 80);
 
-async function observe() {
+async function observe(goal = '') {
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  const data = await page.evaluate(() => {
+  const data = await page.evaluate(({ goal, max }) => {
     const sel = 'a[href],button,input,textarea,select,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=option],[role=switch],[role=combobox],[role=textbox],[contenteditable=""],[contenteditable=true],[onclick]';
     const visible = el => {
       const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
@@ -38,10 +39,26 @@ async function observe() {
         t(el.getAttribute('placeholder')) || t(el.innerText) || t(el.value && el.type !== 'password' ? '' : '') ||
         t(el.getAttribute('title')) || t(el.getAttribute('name')) || t(el.getAttribute('alt')) || el.tagName.toLowerCase();
     };
+    // Long pages have more elements than Decision can take. Keep, in this order: elements whose
+    // label matches rare words or numbers of the goal, elements in the viewport, then the nearest ones.
+    // A word that is in most labels (e.g. "download" in a list of downloads) scores almost nothing.
+    const words = [...new Set((goal.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || [])
+      .map(w => w.replace(/[._-]+$/, '')).filter(w => w.length > 2 || /\d/.test(w)))];
+    const tests = words.map(w => /\d/.test(w)
+      ? (l => new RegExp(`(^|[^\\d.])${w.replace(/\./g, '\\.')}($|[^\\d.])`).test(l)) : (l => l.includes(w)));
+    const vh = innerHeight;
+    const cands = [...document.querySelectorAll(sel)].filter(visible).map((el, order) => {
+      const r = el.getBoundingClientRect();
+      return { el, order, label: labelOf(el).toLowerCase(), dist: r.bottom < 0 ? -r.bottom : r.top > vh ? r.top - vh : 0 };
+    });
+    const df = tests.map(t => cands.filter(c => t(c.label)).length);
+    for (const c of cands) c.score = tests.reduce((s, t, i) => s + (t(c.label) ? Math.log((cands.length + 1) / df[i]) : 0), 0);
+    const keep = new Set(cands.length <= max ? cands.map(c => c.el)
+      : [...cands].sort((a, b) => b.score - a.score || a.dist - b.dist || a.order - b.order).slice(0, max).map(c => c.el));
     let n = 0; const out = [];
     document.querySelectorAll('[data-dpw-ref]').forEach(e => e.removeAttribute('data-dpw-ref'));
-    for (const el of document.querySelectorAll(sel)) {
-      if (!visible(el) || out.length >= 200) continue;
+    for (const { el } of cands) {
+      if (!keep.has(el)) continue;
       const tag = el.tagName.toLowerCase(); const type = (el.getAttribute('type') || '').toLowerCase();
       const role = el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'select' ? 'combobox' : tag === 'textarea' ? 'textbox' :
         tag === 'input' ? (['checkbox', 'radio'].includes(type) ? type : ['submit', 'button', 'reset', 'image'].includes(type) ? 'button' : 'textbox') : tag === 'button' || tag === 'summary' ? 'button' : 'generic');
@@ -62,12 +79,12 @@ async function observe() {
       }
       out.push(item);
     }
-    return { url: location.href, title: document.title, text: (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n'), elements: out };
-  });
+    return { url: location.href, title: document.title, text: (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n'), elements: out, omitted: cands.length - out.length };
+  }, { goal, max: MAX_ELEMENTS });
   return data;
 }
 
-const brief = s => ({ url: s.url, title: s.title, elements: s.elements.map(({ index, ops, ...e }) => e) });
+const brief = s => ({ url: s.url, title: s.title, elements: s.elements.map(({ index, ops, ...e }) => e), ...(s.omitted ? { omittedElements: s.omitted } : {}) });
 
 async function act(dec, state) {
   const { operation, target } = dec;
@@ -94,7 +111,7 @@ async function act(dec, state) {
 async function loop() {
   run.status = 'running';
   while (run.steps < MAX_STEPS) {
-    const state = await observe();
+    const state = await observe(run.goal);
     const dec = await decide(state, run.goal, run.history);
     run.steps++;
     if (dec.operation === 'DONE' || dec.operation === 'BLOCKED') {
@@ -109,6 +126,7 @@ async function loop() {
         status: 'NEEDS_TYPING', goal: run.goal, steps: run.steps,
         target: { ref: el.ref, role: el.role, label: el.label, currentValue: el.value ?? '', sensitive: !!el.sensitive },
         confidence: dec.targetConfidence ?? dec.confidence, model: dec.model,
+        ...(dec.fallbackFrom ? { fallbackFrom: dec.fallbackFrom } : {}),
         page: { url: state.url, title: state.title },
         next: `Type with: dpw type ${el.ref} "<text>"  then: dpw resume`,
       };
@@ -117,7 +135,7 @@ async function loop() {
     const done = await act(dec, state);
     await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(Number(process.env.DPW_SETTLE_MS || 300));
-    run.history.push({ ...done, page_changed: page.url() !== before, confidence: dec.confidence });
+    run.history.push({ ...done, page_changed: page.url() !== before, confidence: dec.confidence, ...(dec.fallbackFrom ? { fallbackFrom: dec.fallbackFrom } : {}) });
   }
   run.status = 'step_limit';
   return { status: 'STEP_LIMIT', goal: run.goal, steps: run.steps, history: run.history };
@@ -151,7 +169,7 @@ const handlers = {
     return { status: 'OK', ref, typedChars: text.length, submitted: !!submit, next: 'dpw resume' };
   },
   async press({ key }) { await page.keyboard.press(key); return { status: 'OK', key }; },
-  async snapshot({ full }) { const s = await observe(); return { status: 'OK', ...brief(s), text: full ? s.text : s.text.slice(0, 4000) }; },
+  async snapshot({ full }) { const s = await observe(run.goal ?? ''); return { status: 'OK', ...brief(s), text: full ? s.text : s.text.slice(0, 4000) }; },
   async screenshot({ file }) { await page.screenshot({ path: file }); return { status: 'OK', file }; },
   async stop() { setTimeout(shutdown, 50); return { status: 'STOPPED', session }; },
 };

@@ -28,6 +28,21 @@ export function startMock(port = 0) {
       else if (sort.value !== 'Price') { op = 'SELECT'; answers.select_target = pick('select_target', sort.options.find(o => o.label === 'Price').index); }
       else { op = 'CLICK'; answers.click_target = pick('click_target', find('Search')); }
     } else if (page.title === 'Results') op = 'DONE';
+    // Long list: click the target link only if it was sent; otherwise BLOCKED like the real model.
+    else if (page.title === 'Portal') { op = 'CLICK'; answers.click_target = pick('click_target', find('Documentation')); }
+    else if (page.title === 'Documentation') {
+      const id = elements.find(e => e.label === 'Release notes 1.0.2')?.index;
+      if (id) { op = 'CLICK'; answers.click_target = pick('click_target', id); }
+    } else if (page.title === 'Release notes') op = 'DONE';
+    // Signup: the real model answers a weak BLOCKED (0.7) with TYPE_TEXT second.
+    else if (page.title === 'Create account') {
+      const ids = Object.keys(q.operation.criteria);
+      const probabilities = Object.fromEntries(ids.map(i => [i, i === 'BLOCKED' ? 0.7 : i === 'TYPE_TEXT' ? 0.2 : 0.1 / (ids.length - 2)]));
+      const name = elements.find(e => e.label === 'Full name');
+      const reply = { answers: { operation: { type: 'choice', choice: 'BLOCKED', confidence: 0.6, probabilities },
+        type_text_target: pick('type_text_target', name.index) }, model: body.model, usage: {} };
+      return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reply));
+    }
     answers.operation = pick('operation', op);
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ answers, model: body.model, usage: {} }));
   });

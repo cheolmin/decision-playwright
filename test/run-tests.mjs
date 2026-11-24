@@ -51,6 +51,22 @@ for (const [provider, c] of Object.entries(cases)) {
   } catch (e) { failed++; console.log(`FAIL ${provider}: ${e.message}`); }
   finally { await dpw('stop'); }
 }
+// Long page (300 links): the goal's link must be among the elements sent to Decision.
+// Signup: a weak BLOCKED with an empty field falls back to TYPE_TEXT.
+{
+  const env = { ...process.env, DECISION_PROVIDER: 'endpoint', DECISION_ENDPOINT_URL: m + '/x', DECISION_API_KEY: 'k', DECISION_MODEL: 'd', DPW_SESSION: 'test-heuristics' };
+  const dpw = async (...a) => { try { return JSON.parse((await run('node', [cli, ...a], { env })).stdout); } catch (e) { return JSON.parse(e.stdout); } };
+  try {
+    const r1 = await dpw('run', 'Open the documentation and open the release notes (not the download) for version 1.0.2.', '--url', site + '/home.html');
+    const sent = mock.log.findLast(l => l.body.state.page.title === 'Documentation').body.state.elements.length;
+    if (r1.status !== 'NEEDS_VERIFICATION' || !r1.page.url.endsWith('release.html?v=1.0.2')) throw new Error('long page: ' + JSON.stringify(r1));
+    console.log(`PASS long page: goal link found among ${sent} sent elements (page has 300)`);
+    const r2 = await dpw('run', 'Create an account for Jane Doe', '--url', site + '/signup.html');
+    if (r2.status !== 'NEEDS_TYPING' || r2.fallbackFrom !== 'BLOCKED' || r2.target.label !== 'Full name') throw new Error('fallback: ' + JSON.stringify(r2));
+    console.log('PASS weak BLOCKED: fell back to NEEDS_TYPING on "Full name"');
+  } catch (e) { failed++; console.log('FAIL heuristics: ' + e.message); }
+  finally { await dpw('stop'); }
+}
 // Missing secret must fail cleanly without printing secrets.
 {
   const env = { ...process.env, DECISION_PROVIDER: 'foundry', FOUNDRY_RESOURCE: 'x', DECISION_DEPLOYMENT: 'd', FOUNDRY_API_KEY: '' };

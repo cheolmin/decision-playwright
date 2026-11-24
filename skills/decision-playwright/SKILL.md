@@ -44,10 +44,18 @@ Use `--session <name>` on every command to run separate browsers.
      Repeat step 2.
    - `NEEDS_VERIFICATION`: Decision thinks the goal is done. Run `dpw snapshot` (or a
      screenshot) and check the result yourself. Decision output is never proof.
-   - `BLOCKED` or `STEP_LIMIT`: run `dpw snapshot`, act yourself (`type`, `press`,
-     `open`), then `dpw resume`, or finish the task manually.
+   - `BLOCKED` or `STEP_LIMIT`: Decision cannot continue. Do not run the same `resume` again.
+     1. `dpw snapshot` (add `--full` for the complete page text).
+     2. Do only the step that is stuck: `dpw type <ref> "<text>"` for an empty field,
+        `dpw open <url>` for a link you can see in the text, or `dpw press <key>`.
+     3. `dpw resume` so Decision does the rest of the clicks and selects.
+     4. If it is BLOCKED again on the same page, finish the remaining steps yourself.
    - `ERROR`: read `error`. Fix configuration or use `snapshot` for fresh refs.
 3. Run `dpw stop` when the task is finished.
+
+Long pages: Decision gets at most 80 elements (`DPW_MAX_ELEMENTS`). Elements that match
+words or numbers in the goal come first, then the visible ones. `snapshot` shows
+`omittedElements` when some were left out. Put exact names and numbers in the goal.
 
 ## Rules
 
