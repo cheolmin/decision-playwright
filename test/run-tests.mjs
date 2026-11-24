@@ -64,6 +64,13 @@ for (const [provider, c] of Object.entries(cases)) {
     const r2 = await dpw('run', 'Create an account for Jane Doe', '--url', site + '/signup.html');
     if (r2.status !== 'NEEDS_TYPING' || r2.fallbackFrom !== 'BLOCKED' || r2.target.label !== 'Full name') throw new Error('fallback: ' + JSON.stringify(r2));
     console.log('PASS weak BLOCKED: fell back to NEEDS_TYPING on "Full name"');
+    // Decision says DONE on the filled form; the daemon must submit it first.
+    await dpw('type', r2.target.ref, 'Jane Doe');
+    const r3 = await dpw('resume');
+    if (r3.status !== 'NEEDS_VERIFICATION' || !r3.page.url.includes('/welcome.html') || !r3.history.some(h => h.auto === 'submit_before_done'))
+      throw new Error('submit before DONE: ' + JSON.stringify(r3));
+    if (!(r3.timing?.decisionCalls > 0 && r3.timing.decisionApiMs >= 0)) throw new Error('timing missing: ' + JSON.stringify(r3.timing));
+    console.log(`PASS DONE on a filled form: daemon submitted it (${r3.page.url.replace(site, '')}) | timing ${JSON.stringify(r3.timing)}`);
   } catch (e) { failed++; console.log('FAIL heuristics: ' + e.message); }
   finally { await dpw('stop'); }
 }

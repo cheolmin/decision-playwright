@@ -34,15 +34,21 @@ export function startMock(port = 0) {
       const id = elements.find(e => e.label === 'Release notes 1.0.2')?.index;
       if (id) { op = 'CLICK'; answers.click_target = pick('click_target', id); }
     } else if (page.title === 'Release notes') op = 'DONE';
-    // Signup: the real model answers a weak BLOCKED (0.7) with TYPE_TEXT second.
+    // Signup: the real model answers a weak BLOCKED (0.7) with TYPE_TEXT second. When the name is
+    // filled it checks the terms box, then says DONE without submitting, like the real model.
     else if (page.title === 'Create account') {
-      const ids = Object.keys(q.operation.criteria);
-      const probabilities = Object.fromEntries(ids.map(i => [i, i === 'BLOCKED' ? 0.7 : i === 'TYPE_TEXT' ? 0.2 : 0.1 / (ids.length - 2)]));
       const name = elements.find(e => e.label === 'Full name');
-      const reply = { answers: { operation: { type: 'choice', choice: 'BLOCKED', confidence: 0.6, probabilities },
-        type_text_target: pick('type_text_target', name.index) }, model: body.model, usage: {} };
-      return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reply));
-    }
+      const terms = elements.find(e => e.label === 'I accept the terms');
+      if (name.value && !terms.checked) { op = 'CLICK'; answers.click_target = pick('click_target', terms.index); }
+      else if (name.value) op = 'DONE';
+      else {
+        const ids = Object.keys(q.operation.criteria);
+        const probabilities = Object.fromEntries(ids.map(i => [i, i === 'BLOCKED' ? 0.7 : i === 'TYPE_TEXT' ? 0.2 : 0.1 / (ids.length - 2)]));
+        const reply = { answers: { operation: { type: 'choice', choice: 'BLOCKED', confidence: 0.6, probabilities },
+          type_text_target: pick('type_text_target', name.index) }, model: body.model, usage: {} };
+        return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reply));
+      }
+    } else if (page.title === 'Welcome') op = 'DONE';
     answers.operation = pick('operation', op);
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ answers, model: body.model, usage: {} }));
   });

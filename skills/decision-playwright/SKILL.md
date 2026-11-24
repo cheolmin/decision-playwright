@@ -53,6 +53,10 @@ Use `--session <name>` on every command to run separate browsers.
    - `ERROR`: read `error`. Fix configuration or use `snapshot` for fresh refs.
 3. Run `dpw stop` when the task is finished.
 
+Forms: if Decision stops on a form that was changed but not sent, the daemon clicks the
+form's submit button once and continues (`auto: "submit_before_done"` in `history`).
+Every `run`/`resume` result has `timing` (`decisionApiMs`, `decisionCalls`, `observeMs`, `actMs`).
+
 Long pages: Decision gets at most 80 elements (`DPW_MAX_ELEMENTS`). Elements that match
 words or numbers in the goal come first, then the visible ones. `snapshot` shows
 `omittedElements` when some were left out. Put exact names and numbers in the goal.

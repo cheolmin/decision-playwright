@@ -20,9 +20,10 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 let page = await context.newPage();
 context.on('page', p => { page = p; });
 
-const run = { goal: null, history: [], steps: 0, status: 'idle', pending: null };
+const run = { goal: null, history: [], steps: 0, status: 'idle', pending: null, editedForm: null };
 const MAX_STEPS = Number(process.env.DPW_MAX_STEPS || 40);
 const MAX_ELEMENTS = Number(process.env.DPW_MAX_ELEMENTS || 80);
+const SUBMIT_BEFORE_DONE = process.env.DPW_SUBMIT_BEFORE_DONE !== '0';
 
 async function observe(goal = '') {
   await page.waitForLoadState('domcontentloaded').catch(() => {});
@@ -77,6 +78,10 @@ async function observe(goal = '') {
         if (role === 'checkbox' || role === 'radio') item.checked = el.checked ?? el.getAttribute('aria-checked') === 'true';
         item.ops = ['CLICK'];
       }
+      if (el.form) {
+        item.form = [...document.forms].indexOf(el.form);
+        if (el.type === 'submit' || tag === 'button' && !el.getAttribute('type')) item.submit = true;
+      }
       out.push(item);
     }
     return { url: location.href, title: document.title, text: (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n'), elements: out, omitted: cands.length - out.length };
@@ -110,13 +115,38 @@ async function act(dec, state) {
 
 async function loop() {
   run.status = 'running';
+  const t0 = Date.now();
+  const tm = { decisionMs: 0, decisionApiMs: 0, decisionCalls: 0, observeMs: 0, actMs: 0 };
+  const timing = () => ({ ...tm, totalMs: Date.now() - t0 });
+  const settle = async () => {
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(Number(process.env.DPW_SETTLE_MS || 300));
+  };
   while (run.steps < MAX_STEPS) {
+    let t = Date.now();
     const state = await observe(run.goal);
+    tm.observeMs += Date.now() - t;
+    t = Date.now();
     const dec = await decide(state, run.goal, run.history);
+    tm.decisionMs += Date.now() - t; tm.decisionApiMs += dec.latencyMs; tm.decisionCalls++;
     run.steps++;
+    t = Date.now();
+    if ((dec.operation === 'DONE' || dec.operation === 'BLOCKED') && SUBMIT_BEFORE_DONE && run.editedForm?.url === state.url) {
+      // Decision often stops (DONE or BLOCKED) on a filled form that is not sent yet. Submit it once, then go on.
+      const btn = state.elements.find(e => e.submit && e.form === run.editedForm.form);
+      run.editedForm = null;
+      if (btn) {
+        const before = page.url();
+        await page.locator(`[data-dpw-ref="${btn.ref}"]`).click({ timeout: 5000 });
+        await settle();
+        run.history.push({ action: 'click', ref: btn.ref, label: btn.label, page_changed: page.url() !== before, auto: 'submit_before_done' });
+        tm.actMs += Date.now() - t;
+        continue;
+      }
+    }
     if (dec.operation === 'DONE' || dec.operation === 'BLOCKED') {
       run.status = dec.operation === 'DONE' ? 'done' : 'blocked';
-      return { status: dec.operation === 'DONE' ? 'NEEDS_VERIFICATION' : 'BLOCKED', goal: run.goal, steps: run.steps, confidence: dec.confidence, model: dec.model, page: { url: state.url, title: state.title }, history: run.history };
+      return { status: dec.operation === 'DONE' ? 'NEEDS_VERIFICATION' : 'BLOCKED', goal: run.goal, steps: run.steps, confidence: dec.confidence, model: dec.model, page: { url: state.url, title: state.title }, history: run.history, timing: timing() };
     }
     if (dec.operation === 'TYPE_TEXT') {
       const el = state.elements.find(e => e.index === dec.target);
@@ -129,16 +159,20 @@ async function loop() {
         ...(dec.fallbackFrom ? { fallbackFrom: dec.fallbackFrom } : {}),
         page: { url: state.url, title: state.title },
         next: `Type with: dpw type ${el.ref} "<text>"  then: dpw resume`,
+        timing: timing(),
       };
     }
     const before = page.url();
     const done = await act(dec, state);
-    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.DPW_SETTLE_MS || 300));
+    const el = state.elements.find(e => e.index === String(dec.target).split(':')[0]);
+    if (el && el.form >= 0 && !el.submit) run.editedForm = { url: state.url, form: el.form };
+    await settle();
+    if (page.url() !== before) run.editedForm = null;
+    tm.actMs += Date.now() - t;
     run.history.push({ ...done, page_changed: page.url() !== before, confidence: dec.confidence, ...(dec.fallbackFrom ? { fallbackFrom: dec.fallbackFrom } : {}) });
   }
   run.status = 'step_limit';
-  return { status: 'STEP_LIMIT', goal: run.goal, steps: run.steps, history: run.history };
+  return { status: 'STEP_LIMIT', goal: run.goal, steps: run.steps, history: run.history, timing: timing() };
 }
 
 async function safeLoop() {
@@ -151,7 +185,7 @@ const handlers = {
   async open({ url }) { await page.goto(url, { waitUntil: 'domcontentloaded' }); return { status: 'OK', url: page.url(), title: await page.title() }; },
   async run({ goal, url }) {
     if (url) await page.goto(url, { waitUntil: 'domcontentloaded' });
-    Object.assign(run, { goal, history: [], steps: 0, pending: null });
+    Object.assign(run, { goal, history: [], steps: 0, pending: null, editedForm: null });
     return safeLoop();
   },
   async resume() {
@@ -163,6 +197,8 @@ const handlers = {
     const loc = page.locator(`[data-dpw-ref="${ref}"]`);
     if (!(await loc.count())) return { status: 'ERROR', error: `Unknown ref ${ref}. Run dpw snapshot for fresh refs.` };
     if (append) await loc.pressSequentially(text); else await loc.fill(text);
+    const form = await loc.evaluate(el => el.form ? [...document.forms].indexOf(el.form) : -1);
+    if (form >= 0) run.editedForm = { url: page.url(), form };
     if (submit) await loc.press('Enter');
     await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
     run.history.push({ action: 'host_typed', ref, chars: text.length, submitted: !!submit });

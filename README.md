@@ -146,6 +146,7 @@ node ~/.claude/skills/decision-playwright/scripts/dpw.mjs config
 | `DPW_MAX_STEPS` | Decision steps per run/resume (default 40) |
 | `DPW_MAX_ELEMENTS` | Elements sent to Decision (default 80). On longer pages, elements that match rare goal words or numbers come first, then the visible ones |
 | `DECISION_BLOCKED_MIN` | A `BLOCKED` below this probability, with an empty field on the page, falls back to the 2nd-ranked operation (default 0.8) |
+| `DPW_SUBMIT_BEFORE_DONE` | `0` turns off the automatic submit. By default, when Decision stops (`DONE`/`BLOCKED`) on a form that was edited and not sent, the daemon clicks that form's submit button once and continues |
 | `DPW_SESSION` / `--session` | Session name (default `default`) |
 | `DPW_STATE_DIR` | Daemon state folder (default `~/.decision-playwright`) |
 | `DECISION_MAX_PAGE_CHARS` | Page text sent to Decision (default 12000) |
@@ -168,7 +169,7 @@ $DPW stop
 
 The test starts a mock System One server and local pages, then runs
 `run → NEEDS_TYPING → type → resume → NEEDS_VERIFICATION` for all five providers,
-checks a 300-link page and the weak-BLOCKED fallback, and
+checks a 300-link page, the weak-BLOCKED fallback and the submit before DONE, and
 checks URL path, auth header and `model` of each request.
 
 ```bash
