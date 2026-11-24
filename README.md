@@ -6,11 +6,6 @@ clicks, scrolling, dropdown options and navigation. When text is needed, Decisio
 returns `NEEDS_TYPING`. The host agent's LLM types with `dpw type`, then `dpw resume`
 gives control back to Decision.
 
-Based on ideas from [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast)
-(System One request format, `choose()` validation) and
-[wy-coliney/jev-browser-use](https://github.com/wy-coliney/jev-browser-use) (host agent types,
-Jev resumes). No MCP server is needed.
-
 ```
 dpw run "goal" ──► Decision loop (click / select / scroll / back)
                       │
