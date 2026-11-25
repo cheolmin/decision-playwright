@@ -127,6 +127,12 @@ $DPW resume
 $DPW stop
 ```
 
+If the goal already has the text, pass it with `--fill` and Decision will not stop for those fields:
+
+```bash
+$DPW run "Log in and check out" --url https://www.saucedemo.com/ \n  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
+```
+
 ## Configure a provider
 
 Secrets come only from environment variables. Keep them in your shell profile or a secret
@@ -242,16 +248,17 @@ With the skill, Decision-1.1 used 5% of the time (2.9 s for 6 calls). The host L
 **Real websites in a visible browser** (saucedemo checkout, the-internet login and forms,
 books.toscrape, Wikipedia · gpt-6.1-terra · 3 runs each)
 
-| | With skill | Without skill |
-|---|---|---|
-| Success | 18/18 | 18/18 |
-| Mean time | 42 s | **26 s** |
-| Agent turns | 7.2 | 2.2 |
+| | v0.2 | **v0.3 (`--fill`)** | Without skill |
+|---|---|---|---|
+| Success | 18/18 | 18/18 | 18/18 |
+| Mean time | 42.3 s | **36.3 s** | 26.0 s |
+| Agent turns | 7.2 | **5.9** | 2.2 |
+| saucedemo checkout (5 text fields) | 66.6 s | **40.9 s** | 29.5 s |
 
-These are well-known demo sites with `data-test` attributes. The agent wrote one Playwright
-script and it worked the first time. The skill adds one agent turn per text field. Use the
-skill when the page is unknown, long or changes often. Use plain Playwright when one stable
-script is enough. Full numbers and method: [docs/benchmark.md](docs/benchmark.md).
+With `--fill`, the whole saucedemo checkout ran in one `dpw run`: 13 Decision steps, no stop
+for text. On these well-known demo sites the agent's first Playwright script worked every time,
+so plain Playwright is still faster there (2 turns vs about 5). Use the skill when the page is
+unknown, long or changes often. Full numbers and method: [docs/benchmark.md](docs/benchmark.md).
 
 ## Options
 

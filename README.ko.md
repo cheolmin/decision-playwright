@@ -127,6 +127,12 @@ $DPW resume
 $DPW stop
 ```
 
+목표에 입력값이 이미 있으면 `--fill` 로 넘기세요. 그 칸에서는 Decision이 멈추지 않습니다:
+
+```bash
+$DPW run "Log in and check out" --url https://www.saucedemo.com/ \n  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
+```
+
 ## Provider 설정
 
 비밀 값은 환경 변수에서만 읽습니다. 셸 프로필이나 비밀 관리 도구에 두세요. 저장소에는 절대
@@ -242,16 +248,18 @@ export TYPESAFE_MODEL=jev-latest
 **실제 웹사이트, 브라우저 창 보임** (saucedemo 결제, the-internet 로그인과 폼,
 books.toscrape, Wikipedia · gpt-6.1-terra · 과제당 3회)
 
-| | 스킬 있음 | 스킬 없음 |
-|---|---|---|
-| 성공 | 18/18 | 18/18 |
-| 평균 시간 | 42초 | **26초** |
-| 에이전트 턴 | 7.2 | 2.2 |
+| | v0.2 | **v0.3 (`--fill`)** | 스킬 없음 |
+|---|---|---|---|
+| 성공 | 18/18 | 18/18 | 18/18 |
+| 평균 시간 | 42.3초 | **36.3초** | 26.0초 |
+| 에이전트 턴 | 7.2 | **5.9** | 2.2 |
+| saucedemo 결제 (입력칸 5개) | 66.6초 | **40.9초** | 29.5초 |
 
-이 사이트들은 `data-test` 속성이 있는 유명한 데모 사이트입니다. 에이전트가 Playwright 스크립트를
-한 번 쓰고, 그 스크립트가 처음부터 성공했습니다. 스킬을 쓰면 입력칸마다 에이전트 턴이 1개 늘어납니다.
-처음 보는 페이지, 긴 페이지, 자주 바뀌는 페이지에는 스킬을 쓰세요. 안정적인 스크립트 하나로 충분하면
-Playwright를 바로 쓰는 편이 빠릅니다. 전체 수치와 방법: [docs/benchmark.md](docs/benchmark.md) (영어).
+`--fill` 을 쓰면 saucedemo 결제 전체가 `dpw run` 한 번으로 끝났습니다. Decision 13단계, 입력 때문에
+멈춘 횟수 0번입니다. 이런 유명한 데모 사이트에서는 에이전트가 처음 쓴 Playwright 스크립트가 매번
+성공했습니다. 그래서 여기서는 Playwright를 바로 쓰는 편이 아직 빠릅니다 (턴 2개 vs 약 5개).
+처음 보는 페이지, 긴 페이지, 자주 바뀌는 페이지에는 스킬을 쓰세요.
+전체 수치와 방법: [docs/benchmark.md](docs/benchmark.md) (영어).
 
 ## 옵션
 

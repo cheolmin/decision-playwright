@@ -98,24 +98,43 @@ Without the skill, most extra time is the agent writing, running and fixing Play
 ## 4. Real websites, visible browser
 
 Headed Edge, real sites, gpt-6.1-terra, 3 runs per task and mode.
+v0.2 = one agent turn per text field. v0.3 = `dpw run --fill` and multi-field `dpw type`.
 
-| Task | Site | With skill | Without skill |
-|---|---|---|---|
-| Log in, add 2 items, check out | saucedemo.com | 66.6 s · 13 Decision calls | **26.4 s** |
-| Log in, log out, report message | the-internet.herokuapp.com | 45.4 s | **24.7 s** |
-| Category → book → price | books.toscrape.com | 31.9 s | 30.5 s |
-| Page 3 → first book title | books.toscrape.com | 35.9 s | **20.1 s** |
-| Search → article → birth date | wikipedia.org | 37.4 s | **28.1 s** |
-| Dropdown, then 2 checkboxes | the-internet.herokuapp.com | 36.3 s | **26.8 s** |
-| **All** | | 42.3 s · 18/18 · 7.2 turns | **26.1 s** · 18/18 · 2.2 turns |
+| Task | Site | v0.2 | **v0.3** | Without skill |
+|---|---|---|---|---|
+| Log in, add 2 items, check out | saucedemo.com | 66.6 s · 10.7 turns | **40.9 s** · 6.0 turns | 29.5 s · 2.3 turns |
+| Log in, log out, report message | the-internet.herokuapp.com | 45.4 s · 7.3 turns | **31.5 s** · 5.3 turns | 21.4 s |
+| Category → book → price | books.toscrape.com | 31.9 s | 31.9 s | 23.4 s |
+| Page 3 → first book title | books.toscrape.com | 35.9 s | 35.6 s | 22.8 s |
+| Search → article → birth date | wikipedia.org | 37.4 s | 43.4 s | 35.1 s |
+| Dropdown, then 2 checkboxes | the-internet.herokuapp.com | 36.3 s | 34.7 s | 24.0 s |
+| **All** | | 42.3 s · 7.2 turns | **36.3 s** · 5.9 turns | 26.0 s · 2.2 turns |
 
-Without the skill, the agent wrote one Playwright script per task, mostly with `data-test`
-or exact text selectors, and it worked the first time. With the skill, each text field is one
-`NEEDS_TYPING → type → resume` round, so a 5-field checkout costs 5 extra agent turns.
+All runs succeeded (18/18 in each column).
+
+Time split, mean per session:
+
+| | v0.3 with skill | Without skill |
+|---|---|---|
+| Host LLM | 12.4 s | 9.3 s |
+| Decision-1.1 | 2.5 s | – |
+| Browser actions | 1.8 s | – |
+| Other tools, shell, process start | 14.9 s | 12.2 s |
+
+**Why the skill is still slower here.** Without the skill the agent wrote one Playwright script
+per task (mostly `data-test` or exact text selectors) and it worked the first time: 2 turns.
+With the skill, a session is at least load skill → `dpw run` → `dpw snapshot && dpw stop` →
+answer, and agents also ran `dpw setup` or `dpw config` first. Each agent turn costs about
+2 s of LLM time plus about 1 s to start the shell.
+
+**What `--fill` changed.** In v0.2 every text field was one `NEEDS_TYPING → type → resume`
+round: the saucedemo checkout took 8 tool calls. In v0.3 the agent passes the known values
+(`--fill '{"Username":"standard_user",...,"Postal Code":"12345"}'`) and the whole checkout is
+one `dpw run` with no stop.
 
 What this means: the skill saves the most when the agent would otherwise have to explore,
-retry or read a long page. On small, stable, well-labeled pages, one plain Playwright script
-is faster.
+retry or read a long page (test pages: −38%). On small, stable, well-labeled pages, one plain
+Playwright script is faster.
 
 ## 5. Bugs found by these tests and fixed
 
@@ -128,6 +147,7 @@ is faster.
 | Wikipedia, login | Asked to type the same field again after the page changed | Stop with `NEEDS_VERIFICATION` and a reason |
 | Edge headed | Translate popup over the page | Turn off translate and first-run prompts |
 | One session | One dropped connection failed the run | Retry network errors twice |
+| saucedemo | One agent turn per text field (5 fields = 5 extra turns) | `--fill` with known values; `NEEDS_TYPING` lists all empty fields; `dpw type` takes several fields |
 
 ## Reproduce
 
