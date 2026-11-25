@@ -12,7 +12,36 @@ Host agent: Claude Code 2.1.296 through LiteLLM (GitHub Copilot models).
   answer for "report" tasks. The agent saying "done" is not counted.
 - "With skill" and "without skill" run in turns on the same task, so slow periods hit both.
 
-## 1. One step: Decision vs LLM
+## 1. Main result: pages the agent does not know
+
+Five pages written for this benchmark, served locally, with no `data-test` hooks or other
+automation-friendly ids: search with sort, account settings (2 checkboxes, 2 dropdowns), a page with
+300 links, a signup form (2 text fields, dropdown, radio, 2 checkboxes), and a 24-item cart.
+3 runs per task and mode. Headless Edge.
+
+| Model | Mode | Success | Mean | Median | LLM time | Decision time | Turns | Output tokens |
+|---|---|---|---|---|---|---|---|---|
+| gpt-6.1-terra | **with skill** | 15/15 | **55.3 s** | **51 s** | 33.3 s | 2.9 s (6 calls) | 6.7 | **389** |
+| gpt-6.1-terra | without skill | 15/15 | 89.3 s | 74 s | 43.5 s | – | 7.2 | 968 |
+| gpt-6-astra | **with skill** | 15/15 | **133.4 s** | **104 s** | 101.7 s | 4.5 s (6 calls) | 8.6 | **447** |
+| gpt-6-astra | without skill | 15/15 | 182.0 s | 176 s | 92.3 s | – | 8.5 | 785 |
+
+Per task, gpt-6.1-terra (mean seconds, 3 runs):
+
+| Task | **With skill** | Without skill | Change |
+|---|---|---|---|
+| Cart: add 2 of 24 items, check out | **44.5** | 142.8 | **3.2× faster** |
+| Signup form | **54.7** | 87.1 | −37% |
+| One link among 300 | **47.0** | 67.9 | −31% |
+| Settings | **63.1** | 77.5 | −19% |
+| Search with sort | **66.9** | 71.3 | −6% |
+
+Why the skill wins here: without it, the agent writes a Playwright script, runs it, reads the
+error and fixes the selectors. That loop took 39 s of tool time per task, against 12 s with the
+skill, and the agent wrote 2.5× more output tokens. With the skill, Decision-1.1 picks each
+element (0.15 s at the server), so the agent never writes a selector.
+
+## 2. One step: Decision vs LLM
 
 Same page state, same element list, one "what next?" question. 6 pages × 10 calls.
 
@@ -54,7 +83,7 @@ The same request measured at the client in Seoul:
 
 So about 0.6 s of a 0.75 s step is the network from Korea and the TLS setup, not the model.
 
-## 2. Decision by region
+## 3. Decision by region
 
 Called from Seoul. 30 rounds × 2 request sizes (390 B and 17 KB), new and reused connection.
 
@@ -69,35 +98,10 @@ Called from Seoul. 30 rounds × 2 request sizes (390 B and 17 KB), new and reuse
   deployment ran in Australia East.
 - A nearby entry point removes most of the cost of a new connection (54 ms vs 588 ms for TCP + TLS).
 
-## 3. Agent tasks on test pages
+## 4. Easy, well-known demo sites (real websites, visible browser)
 
-Five local pages: search with sort, account settings (2 checkboxes, 2 dropdowns), a page with
-300 links, a signup form (2 text fields, dropdown, radio, 2 checkboxes), and a 24-item cart.
-3 runs per task and mode. Headless Edge.
-
-| Model | Mode | Success | Mean | Median | LLM time | Decision time | Turns | Output tokens |
-|---|---|---|---|---|---|---|---|---|
-| gpt-6.1-terra | **with skill** | 15/15 | **55.3 s** | **51 s** | 33.3 s | 2.9 s (6 calls) | 6.7 | **389** |
-| gpt-6.1-terra | without skill | 15/15 | 89.3 s | 74 s | 43.5 s | – | 7.2 | 968 |
-| gpt-6-astra | **with skill** | 15/15 | **133.4 s** | **104 s** | 101.7 s | 4.5 s (6 calls) | 8.6 | **447** |
-| gpt-6-astra | without skill | 15/15 | 182.0 s | 176 s | 92.3 s | – | 8.5 | 785 |
-
-Per task, gpt-6.1-terra (mean seconds):
-
-| Task | With skill | Without skill |
-|---|---|---|
-| Search | 66.9 | 71.3 |
-| Settings | 63.1 | 77.5 |
-| 300-link page | **47.0** | 67.9 |
-| Signup form | **54.7** | 87.1 |
-| Cart | **44.5** | 142.8 |
-
-Without the skill, most extra time is the agent writing, running and fixing Playwright code
-(39 s of tool time vs 12 s).
-
-## 4. Real websites, visible browser
-
-Headed Edge, real sites, gpt-6.1-terra, 3 runs per task and mode.
+These sites are made for automation practice: elements have `data-test` ids or unique text, so
+a first Playwright script usually works. Headed Edge, gpt-6.1-terra, 3 runs per task and mode.
 v0.2 = one agent turn per text field. v0.3 = `dpw run --fill` and multi-field `dpw type`.
 
 | Task | Site | v0.2 | **v0.3** | Without skill |

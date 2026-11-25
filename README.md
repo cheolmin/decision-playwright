@@ -232,34 +232,49 @@ export TYPESAFE_MODEL=jev-latest
 
 ## Benchmarks
 
+### Pages the agent does not know: the skill is faster
+
+Five tasks on pages written for this benchmark, with no `data-test` hooks: search with sort,
+settings (2 checkboxes, 2 dropdowns), one link among 300, a signup form (text, dropdown,
+radio, checkboxes), and a cart with 24 items. 3 runs each.
+
+| Host model | **With skill** | Without skill | Faster | Agent output tokens |
+|---|---|---|---|---|
+| gpt-6.1-terra | **55 s** · 15/15 | 89 s · 15/15 | **−38%** | **389** vs 968 (−60%) |
+| gpt-6-astra | **133 s** · 15/15 | 182 s · 15/15 | **−27%** | **447** vs 785 (−43%) |
+
+| Task (gpt-6.1-terra) | **With skill** | Without skill | |
+|---|---|---|---|
+| Cart: add 2 of 24 items, check out | **44.5 s** | 142.8 s | **3.2× faster** |
+| Signup form | **54.7 s** | 87.1 s | −37% |
+| One link among 300 | **47.0 s** | 67.9 s | −31% |
+| Settings | **63.1 s** | 77.5 s | −19% |
+| Search with sort | **66.9 s** | 71.3 s | −6% |
+
+Without the skill, the agent writes a Playwright script, runs it, reads the error and fixes the
+selectors (39 s of tool time per task). With the skill, Decision-1.1 picks each element and the
+agent never writes a selector (12 s). Decision itself used 2.9 s for 6 calls, 5% of the session.
+
 <p align="center"><img src="docs/speed.svg" alt="Decision-1.1 step time compared with LLMs, and by region" width="100%"></p>
 
-Local agent: Claude Code through LiteLLM. The model was checked in every session.
-Success means the page that the site actually served, not the agent's answer.
+### Easy, well-known demo sites: more turns, so plain Playwright wins
 
-**Agent tasks on test pages** (search, settings, 300-link page, signup form, cart · 3 runs each)
+On saucedemo, the-internet, books.toscrape and Wikipedia, elements have `data-test` ids or
+unique text. The agent's first Playwright script worked every time, in 2 turns. The skill always
+takes about 5 (load skill → `dpw run` → check → stop → answer), so it is slower there:
 
-| Model | With skill | Without skill | Change | Output tokens |
-|---|---|---|---|---|
-| gpt-6.1-terra | **55 s** · 15/15 | 89 s · 15/15 | **−38%** | 389 vs 968 |
-| gpt-6-astra | **133 s** · 15/15 | 182 s · 15/15 | **−27%** | 447 vs 785 |
+| Real sites, visible browser, gpt-6.1-terra | With skill (`--fill`) | Without skill |
+|---|---|---|
+| Mean of 6 tasks · success | 36.3 s · 18/18 | **26.0 s** · 18/18 |
+| Agent turns | 5.9 | **2.2** |
+| saucedemo checkout (5 text fields) | 40.9 s (v0.2: 66.6 s) | **29.5 s** |
 
-With the skill, Decision-1.1 used 5% of the time (2.9 s for 6 calls). The host LLM used the rest.
+`--fill` already removed one turn per text field (the whole saucedemo checkout is one `dpw run`).
+The remaining gap is the fixed turn count. Use plain Playwright when one stable script is enough.
 
-**Real websites in a visible browser** (saucedemo checkout, the-internet login and forms,
-books.toscrape, Wikipedia · gpt-6.1-terra · 3 runs each)
-
-| | v0.2 | **v0.3 (`--fill`)** | Without skill |
-|---|---|---|---|
-| Success | 18/18 | 18/18 | 18/18 |
-| Mean time | 42.3 s | **36.3 s** | 26.0 s |
-| Agent turns | 7.2 | **5.9** | 2.2 |
-| saucedemo checkout (5 text fields) | 66.6 s | **40.9 s** | 29.5 s |
-
-With `--fill`, the whole saucedemo checkout ran in one `dpw run`: 13 Decision steps, no stop
-for text. On these well-known demo sites the agent's first Playwright script worked every time,
-so plain Playwright is still faster there (2 turns vs about 5). Use the skill when the page is
-unknown, long or changes often. Full numbers and method: [docs/benchmark.md](docs/benchmark.md).
+Method, raw numbers and the gateway trace: [docs/benchmark.md](docs/benchmark.md).
+Local agent: Claude Code through LiteLLM; the model was checked in every session. Success is the
+page the site actually served, not the agent's answer.
 
 ## Options
 
