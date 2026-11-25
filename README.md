@@ -130,7 +130,8 @@ $DPW stop
 If the goal already has the text, pass it with `--fill` and Decision will not stop for those fields:
 
 ```bash
-$DPW run "Log in and check out" --url https://www.saucedemo.com/ \n  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
+$DPW run "Log in and check out" --url https://www.saucedemo.com/ \
+  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
 ```
 
 ## Configure a provider

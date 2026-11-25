@@ -130,7 +130,8 @@ $DPW stop
 목표에 입력값이 이미 있으면 `--fill` 로 넘기세요. 그 칸에서는 Decision이 멈추지 않습니다:
 
 ```bash
-$DPW run "Log in and check out" --url https://www.saucedemo.com/ \n  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
+$DPW run "Log in and check out" --url https://www.saucedemo.com/ \
+  --fill '{"Username":"standard_user","Password":"secret_sauce","First Name":"Jane","Last Name":"Doe","Postal Code":"12345"}'
 ```
 
 ## Provider 설정
