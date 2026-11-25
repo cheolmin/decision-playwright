@@ -13,6 +13,8 @@ const infoFile = path.join(dir, `${session}.json`);
 const token = crypto.randomBytes(24).toString('hex');
 
 const launch = { headless: process.env.DPW_HEADED !== '1' };
+// No translate bar or first-run prompts over the page (they also end up in recordings).
+launch.args = ['--disable-features=Translate,TranslateUI,msEdgeTranslate', '--no-first-run', '--no-default-browser-check', '--window-position=0,0', '--window-size=1296,1020'];
 if (process.env.DPW_EXECUTABLE_PATH) launch.executablePath = process.env.DPW_EXECUTABLE_PATH;
 else if (process.env.DPW_CHANNEL) launch.channel = process.env.DPW_CHANNEL;
 const browser = await chromium.launch(launch);
