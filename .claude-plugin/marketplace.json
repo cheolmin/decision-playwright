@@ -1,0 +1,16 @@
+{
+  "name": "cheolmin",
+  "owner": {
+    "name": "cheolmin"
+  },
+  "plugins": [
+    {
+      "name": "decision-playwright",
+      "source": "./",
+      "description": "Browser automation: Microsoft-Decision-1.1 clicks, selects and navigates; the host agent types."
+    }
+  ],
+  "metadata": {
+    "description": "Agent skills by cheolmin"
+  }
+}

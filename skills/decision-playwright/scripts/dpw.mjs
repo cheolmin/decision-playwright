@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stateDir } from './common.mjs';
+import { ensureRuntime, loadChromium, launchBrowser } from './runtime.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -32,7 +33,8 @@ const USAGE = `Usage: dpw <command> [args] [--session name]
   snapshot [--full]          Page title, URL, element refs and text
   press <key>                Press a key (e.g. Enter, Escape)
   screenshot <file.png>      Save a screenshot
-  status | stop | config`;
+  status | stop | config
+  setup                      Install playwright-core and check that a browser starts`;
 
 function readInfo() { try { return JSON.parse(fs.readFileSync(infoFile, 'utf8')); } catch { return null; } }
 
@@ -50,6 +52,7 @@ async function ensureDaemon() {
   let info = readInfo();
   if (info && await alive(info)) return info;
   try { fs.unlinkSync(infoFile); } catch {}
+  ensureRuntime(); // first run: npm install in the foreground, before the 15 s daemon wait
   const log = fs.openSync(path.join(stateDir(), `${session}.log`), 'a');
   const child = spawn(process.execPath, [path.join(here, 'daemon.mjs')], { detached: true, stdio: ['ignore', log, log], env: process.env });
   child.unref();
@@ -67,6 +70,14 @@ try {
   if (cmd === 'config') {
     const { describeProvider } = await import('./provider.mjs');
     print(describeProvider());
+    process.exit(0);
+  }
+  if (cmd === 'setup') {
+    const browser = await launchBrowser(await loadChromium(), { headless: true });
+    const version = browser.version();
+    await browser.close();
+    const { describeProvider } = await import('./provider.mjs');
+    print({ status: 'OK', playwrightCore: ensureRuntime(), browser: version, provider: describeProvider() });
     process.exit(0);
   }
   if (cmd === 'stop') {

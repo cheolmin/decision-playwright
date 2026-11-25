@@ -14,14 +14,15 @@ A background daemon keeps the Playwright browser session alive between commands.
 
 ## Command
 
-Run the CLI from this skill folder:
+Run the CLI that ships in this skill folder:
 
 ```bash
 node <skill-dir>/scripts/dpw.mjs <command>
 ```
 
-`<skill-dir>` is the folder that contains this file, for example
-`~/.claude/skills/decision-playwright` or `~/.copilot/skills/decision-playwright`.
+`<skill-dir>` is the folder that contains this file (the "Base directory for this skill").
+The first command installs `playwright-core` into `~/.decision-playwright/runtime` if it is
+missing, and uses Chrome or Edge if one is installed. Run `dpw setup` once to see this happen.
 Every command prints one JSON object.
 
 | Command | Purpose |
@@ -32,6 +33,7 @@ Every command prints one JSON object.
 | `snapshot [--full]` | URL, title, element refs and page text |
 | `open <url>` / `press <key>` / `screenshot <file>` | Manual helpers |
 | `status` / `config` / `stop` | Session state, provider check, close browser |
+| `setup` | Install the runtime and check that a browser starts |
 
 Use `--session <name>` on every command to run separate browsers.
 

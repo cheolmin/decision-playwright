@@ -1,11 +1,33 @@
 {
   "name": "decision-playwright",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "description": "Playwright browser skill: Microsoft-Decision-1.1/Jev clicks, the host agent types.",
-  "bin": { "dpw": "scripts/dpw.mjs" },
-  "engines": { "node": ">=18" },
-  "dependencies": { "playwright-core": "^1.50.0" },
-  "license": "MIT"
+  "bin": {
+    "decision-playwright": "scripts/dpw.mjs",
+    "dpw": "scripts/dpw.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright-core": "^1.50.0"
+  },
+  "license": "MIT",
+  "files": [
+    "scripts/",
+    "SKILL.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cheolmin/decision-playwright.git"
+  },
+  "keywords": [
+    "agent-skill",
+    "claude-code",
+    "copilot-cli",
+    "playwright",
+    "browser-automation",
+    "microsoft-decision"
+  ]
 }
