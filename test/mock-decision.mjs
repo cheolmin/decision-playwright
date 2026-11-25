@@ -28,6 +28,12 @@ export function startMock(port = 0) {
       else if (sort.value !== 'Price') { op = 'SELECT'; answers.select_target = pick('select_target', sort.options.find(o => o.label === 'Price').index); }
       else { op = 'CLICK'; answers.click_target = pick('click_target', find('Search')); }
     } else if (page.title === 'Results') op = 'DONE';
+    // Wiki: on the article the search box is empty again; the real model asks to type it again.
+    else if (page.title === 'Wiki' || page.title === 'Article') {
+      const box = elements.find(e => e.label === 'Search wiki');
+      if (!box.value) { op = 'TYPE_TEXT'; answers.type_text_target = pick('type_text_target', box.index); }
+      else { op = 'CLICK'; answers.click_target = pick('click_target', elements.find(e => e.label === 'Search').index); }
+    }
     // Long list: click the target link only if it was sent; otherwise BLOCKED like the real model.
     else if (page.title === 'Portal') { op = 'CLICK'; answers.click_target = pick('click_target', find('Documentation')); }
     else if (page.title === 'Documentation') {

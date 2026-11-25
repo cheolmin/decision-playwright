@@ -16,7 +16,10 @@ const launch = { headless: process.env.DPW_HEADED !== '1' };
 if (process.env.DPW_EXECUTABLE_PATH) launch.executablePath = process.env.DPW_EXECUTABLE_PATH;
 else if (process.env.DPW_CHANNEL) launch.channel = process.env.DPW_CHANNEL;
 const browser = await chromium.launch(launch);
-const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+// DPW_RECORD_DIR: record every page of the session as WebM; the files are final after `dpw stop`.
+const recordDir = process.env.DPW_RECORD_DIR ? path.resolve(process.env.DPW_RECORD_DIR) : null;
+if (recordDir) fs.mkdirSync(recordDir, { recursive: true });
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...(recordDir ? { recordVideo: { dir: recordDir, size: { width: 1280, height: 900 } } } : {}) });
 let page = await context.newPage();
 context.on('page', p => { page = p; });
 
@@ -125,6 +128,7 @@ async function loop() {
   while (run.steps < MAX_STEPS) {
     let t = Date.now();
     const state = await observe(run.goal);
+    run.lastState = state;
     tm.observeMs += Date.now() - t;
     t = Date.now();
     const dec = await decide(state, run.goal, run.history);
@@ -150,6 +154,13 @@ async function loop() {
     }
     if (dec.operation === 'TYPE_TEXT') {
       const el = state.elements.find(e => e.index === dec.target);
+      // Same field typed earlier in this run and the page changed since: the flow went past it
+      // (submitted, logged out, ...). Hand back for a check instead of typing it again.
+      const typedAt = run.history.findIndex(h => h.action === 'host_typed' && h.label === el.label);
+      if (typedAt >= 0 && run.history.slice(typedAt + 1).some(h => h.page_changed)) {
+        run.status = 'done';
+        return { status: 'NEEDS_VERIFICATION', reason: `Decision asked to type "${el.label}" again after the page changed. The goal is probably done; check it. If not, type and resume.`, goal: run.goal, steps: run.steps, model: dec.model, page: { url: state.url, title: state.title }, history: run.history, timing: timing() };
+      }
       run.status = 'needs_typing';
       run.pending = el.ref;
       return {
@@ -196,18 +207,24 @@ const handlers = {
   async type({ ref, text, submit, append }) {
     const loc = page.locator(`[data-dpw-ref="${ref}"]`);
     if (!(await loc.count())) return { status: 'ERROR', error: `Unknown ref ${ref}. Run dpw snapshot for fresh refs.` };
+    const sensitive = await loc.evaluate(el => el.type === 'password');
     if (append) await loc.pressSequentially(text); else await loc.fill(text);
     const form = await loc.evaluate(el => el.form ? [...document.forms].indexOf(el.form) : -1);
     if (form >= 0) run.editedForm = { url: page.url(), form };
     if (submit) await loc.press('Enter');
     await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-    run.history.push({ action: 'host_typed', ref, chars: text.length, submitted: !!submit });
+    const label = run.lastState?.elements.find(e => e.ref === ref)?.label ?? ref;
+    run.history.push({ action: 'host_typed', ref, label, text: sensitive ? '(hidden)' : text.slice(0, 80), submitted: !!submit, page: page.url() });
     return { status: 'OK', ref, typedChars: text.length, submitted: !!submit, next: 'dpw resume' };
   },
   async press({ key }) { await page.keyboard.press(key); return { status: 'OK', key }; },
-  async snapshot({ full }) { const s = await observe(run.goal ?? ''); return { status: 'OK', ...brief(s), text: full ? s.text : s.text.slice(0, 4000) }; },
+  async snapshot({ full }) { const s = await observe(run.goal ?? ''); run.lastState = s; return { status: 'OK', ...brief(s), text: full ? s.text : s.text.slice(0, 4000) }; },
   async screenshot({ file }) { await page.screenshot({ path: file }); return { status: 'OK', file }; },
-  async stop() { setTimeout(shutdown, 50); return { status: 'STOPPED', session }; },
+  async stop() {
+    const videos = recordDir ? (await Promise.all(context.pages().map(p => p.video()?.path().catch(() => null)))).filter(Boolean) : [];
+    setTimeout(shutdown, 50);
+    return { status: 'STOPPED', session, ...(videos.length ? { videos } : {}) };
+  },
 };
 
 let busy = false;
@@ -229,6 +246,7 @@ const server = http.createServer(async (req, res) => {
 
 async function shutdown() {
   try { fs.unlinkSync(infoFile); } catch {}
+  await context.close().catch(() => {}); // flushes recorded videos
   await browser.close().catch(() => {});
   server.close();
   process.exit(0);

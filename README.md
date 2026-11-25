@@ -143,6 +143,7 @@ node ~/.claude/skills/decision-playwright/scripts/dpw.mjs config
 | `DPW_EXECUTABLE_PATH` | Path to a Chrome/Chromium binary |
 | `DPW_CHANNEL` | `chrome`, `msedge`, ... (installed browser) |
 | `DPW_HEADED=1` | Show the browser window |
+| `DPW_RECORD_DIR` | Record the session as WebM files in this folder. `dpw stop` returns the file paths |
 | `DPW_MAX_STEPS` | Decision steps per run/resume (default 40) |
 | `DPW_MAX_ELEMENTS` | Elements sent to Decision (default 80). On longer pages, elements that match rare goal words or numbers come first, then the visible ones |
 | `DECISION_BLOCKED_MIN` | A `BLOCKED` below this probability, with an empty field on the page, falls back to the 2nd-ranked operation (default 0.8) |

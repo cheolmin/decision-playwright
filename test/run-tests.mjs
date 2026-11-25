@@ -5,6 +5,7 @@ const run = promisify(execFile);
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { startMock } from './mock-decision.mjs';
 
@@ -54,7 +55,8 @@ for (const [provider, c] of Object.entries(cases)) {
 // Long page (300 links): the goal's link must be among the elements sent to Decision.
 // Signup: a weak BLOCKED with an empty field falls back to TYPE_TEXT.
 {
-  const env = { ...process.env, DECISION_PROVIDER: 'endpoint', DECISION_ENDPOINT_URL: m + '/x', DECISION_API_KEY: 'k', DECISION_MODEL: 'd', DPW_SESSION: 'test-heuristics' };
+  const recDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dpw-rec-'));
+  const env = { ...process.env, DECISION_PROVIDER: 'endpoint', DECISION_ENDPOINT_URL: m + '/x', DECISION_API_KEY: 'k', DECISION_MODEL: 'd', DPW_SESSION: 'test-heuristics', DPW_RECORD_DIR: recDir };
   const dpw = async (...a) => { try { return JSON.parse((await run('node', [cli, ...a], { env })).stdout); } catch (e) { return JSON.parse(e.stdout); } };
   try {
     const r1 = await dpw('run', 'Open the documentation and open the release notes (not the download) for version 1.0.2.', '--url', site + '/home.html');
@@ -71,8 +73,20 @@ for (const [provider, c] of Object.entries(cases)) {
       throw new Error('submit before DONE: ' + JSON.stringify(r3));
     if (!(r3.timing?.decisionCalls > 0 && r3.timing.decisionApiMs >= 0)) throw new Error('timing missing: ' + JSON.stringify(r3.timing));
     console.log(`PASS DONE on a filled form: daemon submitted it (${r3.page.url.replace(site, '')}) | timing ${JSON.stringify(r3.timing)}`);
+    // Search box empty again on the result page: no second NEEDS_TYPING for the same field.
+    const w1 = await dpw('run', 'Search the wiki for Ada Lovelace and report her birth date', '--url', site + '/wiki.html');
+    await dpw('type', w1.target.ref, 'Ada Lovelace');
+    const w2 = await dpw('resume');
+    if (w2.status !== 'NEEDS_VERIFICATION' || !w2.page.url.includes('article.html')) throw new Error('repeat typing: ' + JSON.stringify(w2));
+    console.log('PASS no repeat typing: search box empty on the result page ends with NEEDS_VERIFICATION');
   } catch (e) { failed++; console.log('FAIL heuristics: ' + e.message); }
-  finally { await dpw('stop'); }
+  finally {
+    const stop = await dpw('stop');
+    await new Promise(r => setTimeout(r, 1500));
+    const videos = fs.readdirSync(recDir).filter(f => f.endsWith('.webm') && fs.statSync(path.join(recDir, f)).size > 0);
+    if (stop.videos?.length && videos.length) console.log(`PASS recording: ${videos.length} WebM file(s) saved`); else { failed++; console.log('FAIL recording: ' + JSON.stringify(stop)); }
+    fs.rmSync(recDir, { recursive: true, force: true });
+  }
 }
 // Missing secret must fail cleanly without printing secrets.
 {

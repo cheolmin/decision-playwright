@@ -42,7 +42,7 @@ Use `--session <name>` on every command to run separate browsers.
    - `NEEDS_TYPING`: read `target.label` and `target.currentValue`. Decide the exact text
      from the user's goal. Run `dpw type <target.ref> "<text>"`. Then run `dpw resume`.
      Repeat step 2.
-   - `NEEDS_VERIFICATION`: Decision thinks the goal is done. Run `dpw snapshot` (or a
+   - `NEEDS_VERIFICATION`: Decision thinks the goal is done (read `reason` if present). Run `dpw snapshot` (or a
      screenshot) and check the result yourself. Decision output is never proof.
    - `BLOCKED` or `STEP_LIMIT`: Decision cannot continue. Do not run the same `resume` again.
      1. `dpw snapshot` (add `--full` for the complete page text).
@@ -82,4 +82,5 @@ Set `DECISION_PROVIDER` and the matching variables before you run commands. Run
 - `aigateway`: `AIGATEWAY_URL` (gateway hostname), `AIGATEWAY_API_KEY`, `DECISION_MODEL` (alias, e.g. `<provider>/<model>`), optional `AIGATEWAY_PATH`
 - `apim`: `APIM_GATEWAY_URL`, `APIM_SUBSCRIPTION_KEY`, `DECISION_MODEL`, optional `APIM_KEY_HEADER`, `APIM_PATH`
 
-Browser: `DPW_EXECUTABLE_PATH` or `DPW_CHANNEL` (for example `chrome`), `DPW_HEADED=1` to show the window.
+Browser: `DPW_EXECUTABLE_PATH` or `DPW_CHANNEL` (for example `chrome`), `DPW_HEADED=1` to show the window,
+`DPW_RECORD_DIR=<folder>` to record a WebM video (paths are in the `dpw stop` output).
