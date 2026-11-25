@@ -1,8 +1,10 @@
 {
   "name": "decision-playwright",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Browser automation: Microsoft-Decision-1.1 clicks, selects and navigates; the host agent types.",
-  "author": { "name": "cheolmin" },
+  "author": {
+    "name": "cheolmin"
+  },
   "repository": "https://github.com/cheolmin/decision-playwright",
   "license": "MIT"
 }

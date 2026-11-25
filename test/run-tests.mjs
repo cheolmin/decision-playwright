@@ -79,6 +79,19 @@ for (const [provider, c] of Object.entries(cases)) {
     const w2 = await dpw('resume');
     if (w2.status !== 'NEEDS_VERIFICATION' || !w2.page.url.includes('article.html')) throw new Error('repeat typing: ' + JSON.stringify(w2));
     console.log('PASS no repeat typing: search box empty on the result page ends with NEEDS_VERIFICATION');
+    // --fill: the value for "Full name" is known, so Decision's TYPE_TEXT is done without stopping.
+    const f1 = await dpw('run', 'Create an account for Jane Doe', '--url', site + '/signup.html', '--fill', '{"Full name":"Jane Doe"}');
+    if (f1.status !== 'NEEDS_VERIFICATION' || !f1.page.url.includes('name=Jane+Doe') || f1.timing?.filled !== 1) throw new Error('fill: ' + JSON.stringify(f1));
+    console.log(`PASS --fill: typed "Full name" without stopping (${f1.page.url.replace(site, '')})`);
+    // NEEDS_TYPING lists every empty field of the form; `type` takes several ref/text pairs.
+    const m1 = await dpw('run', 'Create an account for Jane Doe', '--url', site + '/signup.html');
+    const email = m1.fields?.find(f => f.label === 'Email');
+    if (m1.status !== 'NEEDS_TYPING' || m1.fields?.length !== 2 || !email) throw new Error('fields: ' + JSON.stringify(m1));
+    const m2 = await dpw('type', m1.target.ref, 'Jane Doe', email.ref, 'jane@example.com');
+    if (m2.status !== 'OK' || m2.typed.length !== 2) throw new Error('multi type: ' + JSON.stringify(m2));
+    const m3 = await dpw('resume');
+    if (!m3.page.url.includes('email=jane%40example.com')) throw new Error('multi type result: ' + JSON.stringify(m3.page));
+    console.log('PASS multi-field: NEEDS_TYPING listed 2 fields, one `type` call filled both');
   } catch (e) { failed++; console.log('FAIL heuristics: ' + e.message); }
   finally {
     const stop = await dpw('stop');

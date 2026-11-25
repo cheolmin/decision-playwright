@@ -26,9 +26,11 @@ const infoFile = path.join(stateDir(), `${session}.json`);
 const print = o => { process.stdout.write(JSON.stringify(o, null, 2) + '\n'); };
 
 const USAGE = `Usage: dpw <command> [args] [--session name]
-  run "<goal>" [--url URL]   Decision clicks/scrolls/navigates until DONE, BLOCKED or NEEDS_TYPING
-  type <ref> "<text>" [--submit] [--append]   Host agent types into the field
-  resume                     Decision takes over again with the same goal
+  run "<goal>" [--url URL] [--fill JSON]   Decision clicks/scrolls/navigates until DONE, BLOCKED or NEEDS_TYPING.
+                             --fill '{"Email":"a@b.c"}' types matching fields without stopping
+  type <ref> "<text>" [<ref> "<text>" ...] [--submit] [--append]   Host agent types into fields
+  type --fields '{"e1":"Jane","e2":"Doe"}'
+  resume [--fill JSON]       Decision takes over again with the same goal
   open <url>                 Navigate without Decision
   snapshot [--full]          Page title, URL, element refs and text
   press <key>                Press a key (e.g. Enter, Escape)
@@ -65,6 +67,24 @@ async function ensureDaemon() {
 }
 
 const [cmd, ...rest] = pos;
+
+function jsonFlag(name) {
+  if (flags[name] === undefined) return undefined;
+  try { const v = JSON.parse(flags[name]); if (v && typeof v === 'object' && !Array.isArray(v)) return v; } catch {}
+  throw new Error(`--${name} must be a JSON object, e.g. {"Email":"jane@example.com"}`);
+}
+
+// `type e1 "Jane"`, `type e1 "Jane" e2 "Doe"` (refs look like e<number>), or --fields '{"e1":"Jane"}'.
+function typePairs() {
+  if (flags.fields !== undefined) return Object.entries(jsonFlag('fields')).map(([r, t]) => [r, String(t)]);
+  const isRef = x => /^e\d+$/.test(x);
+  if (rest.length > 2 && rest.length % 2 === 0 && rest.every((x, i) => i % 2 || isRef(x))) {
+    const out = [];
+    for (let i = 0; i < rest.length; i += 2) out.push([rest[i], rest[i + 1]]);
+    return out;
+  }
+  return rest[0] && rest.length >= 2 ? [[rest[0], rest.slice(1).join(' ')]] : [];
+}
 try {
   if (!cmd || cmd === 'help') { console.log(USAGE); process.exit(0); }
   if (cmd === 'config') {
@@ -86,15 +106,15 @@ try {
     process.exit(0);
   }
   const map = {
-    run: () => ({ goal: rest.join(' '), url: flags.url }),
-    type: () => ({ ref: rest[0], text: rest.slice(1).join(' '), submit: !!flags.submit, append: !!flags.append }),
-    resume: () => ({}), status: () => ({}), snapshot: () => ({ full: !!flags.full }),
+    run: () => ({ goal: rest.join(' '), url: flags.url, fill: jsonFlag('fill') }),
+    type: () => ({ pairs: typePairs(), submit: !!flags.submit, append: !!flags.append }),
+    resume: () => ({ fill: jsonFlag('fill') }), status: () => ({}), snapshot: () => ({ full: !!flags.full }),
     open: () => ({ url: rest[0] }), press: () => ({ key: rest[0] }),
     screenshot: () => ({ file: path.resolve(rest[0] || 'dpw.png') }),
   };
   if (!map[cmd]) { console.error(USAGE); process.exit(2); }
   if (cmd === 'run' && !rest.length) throw new Error('run needs a goal');
-  if (cmd === 'type' && (!rest[0] || rest.length < 2)) throw new Error('type needs <ref> and <text>');
+  if (cmd === 'type' && !typePairs().length) throw new Error('type needs <ref> <text> [<ref> <text> ...] or --fields JSON');
   const info = await ensureDaemon();
   const out = await call(info, cmd, map[cmd]());
   print(out);

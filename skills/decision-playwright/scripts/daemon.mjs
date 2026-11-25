@@ -23,7 +23,7 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 let page = await context.newPage();
 context.on('page', p => { page = p; });
 
-const run = { goal: null, history: [], steps: 0, status: 'idle', pending: null, editedForm: null };
+const run = { goal: null, history: [], steps: 0, status: 'idle', pending: null, editedForm: null, fill: {}, filled: new Set() };
 const MAX_STEPS = Number(process.env.DPW_MAX_STEPS || 40);
 const MAX_ELEMENTS = Number(process.env.DPW_MAX_ELEMENTS || 80);
 const SUBMIT_BEFORE_DONE = process.env.DPW_SUBMIT_BEFORE_DONE !== '0';
@@ -116,6 +116,37 @@ async function act(dec, state) {
   throw new Error('Unsupported operation ' + operation);
 }
 
+// --fill values: {"Email": "a@b.c"}. A key matches a field label case-insensitively, by equal text
+// or by one containing the other ("Zip" matches "Zip/Postal Code").
+const norm = x => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function fillFor(label) {
+  const l = norm(label);
+  if (!l) return null;
+  let best = null;
+  for (const [k, v] of Object.entries(run.fill)) {
+    const nk = norm(k);
+    if (!nk) continue;
+    const score = nk === l ? 3 : l.startsWith(nk) || nk.startsWith(l) ? 2 : l.includes(nk) || nk.includes(l) ? 1 : 0;
+    if (score && (!best || score > best.score)) best = { key: k, value: String(v), score };
+  }
+  return best;
+}
+
+// Type into one field and record it so Decision sees what was typed.
+async function typeField(ref, text, { submit = false, append = false, by = 'host' } = {}) {
+  const loc = page.locator(`[data-dpw-ref="${ref}"]`);
+  if (!(await loc.count())) return { ref, status: 'ERROR', error: `Unknown ref ${ref}. Run dpw snapshot for fresh refs.` };
+  const sensitive = await loc.evaluate(el => el.type === 'password');
+  if (append) await loc.pressSequentially(text); else await loc.fill(text);
+  const form = await loc.evaluate(el => el.form ? [...document.forms].indexOf(el.form) : -1);
+  if (form >= 0) run.editedForm = { url: page.url(), form };
+  if (submit) await loc.press('Enter');
+  await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+  const label = run.lastState?.elements.find(e => e.ref === ref)?.label ?? ref;
+  run.history.push({ action: 'host_typed', ref, label, text: sensitive ? '(hidden)' : text.slice(0, 80), submitted: !!submit, page: page.url(), ...(by === 'fill' ? { from: 'fill' } : {}) });
+  return { ref, status: 'OK', typedChars: text.length, submitted: !!submit };
+}
+
 async function loop() {
   run.status = 'running';
   const t0 = Date.now();
@@ -161,15 +192,28 @@ async function loop() {
         run.status = 'done';
         return { status: 'NEEDS_VERIFICATION', reason: `Decision asked to type "${el.label}" again after the page changed. The goal is probably done; check it. If not, type and resume.`, goal: run.goal, steps: run.steps, model: dec.model, page: { url: state.url, title: state.title }, history: run.history, timing: timing() };
       }
+      const fill = !el.value && fillFor(el.label);
+      if (fill && !run.filled.has(`${state.url}|${fill.key}`)) {
+        run.filled.add(`${state.url}|${fill.key}`);
+        await typeField(el.ref, fill.value, { by: 'fill' });
+        tm.actMs += Date.now() - t;
+        tm.filled = (tm.filled ?? 0) + 1;
+        continue;
+      }
       run.status = 'needs_typing';
       run.pending = el.ref;
+      // Every empty text field of the same form (or of the page, without a form), so the host
+      // can type them all with one `dpw type` call.
+      const fields = state.elements.filter(e => e.ops.includes('TYPE_TEXT') && !e.value && (el.form >= 0 ? e.form === el.form : !(e.form >= 0)))
+        .map(e => ({ ref: e.ref, label: e.label, ...(e.sensitive ? { sensitive: true } : {}) }));
       return {
         status: 'NEEDS_TYPING', goal: run.goal, steps: run.steps,
         target: { ref: el.ref, role: el.role, label: el.label, currentValue: el.value ?? '', sensitive: !!el.sensitive },
+        ...(fields.length > 1 ? { fields } : {}),
         confidence: dec.targetConfidence ?? dec.confidence, model: dec.model,
         ...(dec.fallbackFrom ? { fallbackFrom: dec.fallbackFrom } : {}),
         page: { url: state.url, title: state.title },
-        next: `Type with: dpw type ${el.ref} "<text>"  then: dpw resume`,
+        next: fields.length > 1 ? `Type all with: dpw type ${fields.map(f => `${f.ref} "<${f.label}>"`).join(' ')}  then: dpw resume` : `Type with: dpw type ${el.ref} "<text>"  then: dpw resume`,
         timing: timing(),
       };
     }
@@ -194,28 +238,25 @@ async function safeLoop() {
 const handlers = {
   async status() { return { session, status: run.status, goal: run.goal, steps: run.steps, url: page.url(), provider: describeProvider() }; },
   async open({ url }) { await page.goto(url, { waitUntil: 'domcontentloaded' }); return { status: 'OK', url: page.url(), title: await page.title() }; },
-  async run({ goal, url }) {
+  async run({ goal, url, fill }) {
     if (url) await page.goto(url, { waitUntil: 'domcontentloaded' });
-    Object.assign(run, { goal, history: [], steps: 0, pending: null, editedForm: null });
+    Object.assign(run, { goal, history: [], steps: 0, pending: null, editedForm: null, fill: fill ?? {}, filled: new Set() });
     return safeLoop();
   },
-  async resume() {
+  async resume({ fill } = {}) {
     if (!run.goal) return { status: 'ERROR', error: 'No goal to resume. Use dpw run first.' };
     run.pending = null;
+    if (fill) run.fill = { ...run.fill, ...fill };
     return safeLoop();
   },
-  async type({ ref, text, submit, append }) {
-    const loc = page.locator(`[data-dpw-ref="${ref}"]`);
-    if (!(await loc.count())) return { status: 'ERROR', error: `Unknown ref ${ref}. Run dpw snapshot for fresh refs.` };
-    const sensitive = await loc.evaluate(el => el.type === 'password');
-    if (append) await loc.pressSequentially(text); else await loc.fill(text);
-    const form = await loc.evaluate(el => el.form ? [...document.forms].indexOf(el.form) : -1);
-    if (form >= 0) run.editedForm = { url: page.url(), form };
-    if (submit) await loc.press('Enter');
-    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-    const label = run.lastState?.elements.find(e => e.ref === ref)?.label ?? ref;
-    run.history.push({ action: 'host_typed', ref, label, text: sensitive ? '(hidden)' : text.slice(0, 80), submitted: !!submit, page: page.url() });
-    return { status: 'OK', ref, typedChars: text.length, submitted: !!submit, next: 'dpw resume' };
+  async type({ pairs, submit, append }) {
+    const typed = [];
+    for (const [i, [ref, text]] of pairs.entries()) {
+      const r = await typeField(ref, text, { append, submit: submit && i === pairs.length - 1 });
+      typed.push(r);
+      if (r.status !== 'OK') return { status: 'ERROR', error: r.error, typed };
+    }
+    return { status: 'OK', typed, next: 'dpw resume' };
   },
   async press({ key }) { await page.keyboard.press(key); return { status: 'OK', key }; },
   async snapshot({ full }) { const s = await observe(run.goal ?? ''); run.lastState = s; return { status: 'OK', ...brief(s), text: full ? s.text : s.text.slice(0, 4000) }; },

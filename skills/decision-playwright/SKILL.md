@@ -27,9 +27,9 @@ Every command prints one JSON object.
 
 | Command | Purpose |
 |---|---|
-| `run "<goal>" [--url URL]` | Decision drives the page until it stops |
-| `type <ref> "<text>" [--submit] [--append]` | You type into the field `<ref>` |
-| `resume` | Decision takes over again with the same goal |
+| `run "<goal>" [--url URL] [--fill JSON]` | Decision drives the page until it stops. `--fill` gives text for fields by label |
+| `type <ref> "<text>" [<ref> "<text>" ...] [--submit]` | You type into one or more fields |
+| `resume [--fill JSON]` | Decision takes over again with the same goal |
 | `snapshot [--full]` | URL, title, element refs and page text |
 | `open <url>` / `press <key>` / `screenshot <file>` | Manual helpers |
 | `status` / `config` / `stop` | Session state, provider check, close browser |
@@ -39,11 +39,26 @@ Use `--session <name>` on every command to run separate browsers.
 
 ## Loop
 
-1. `dpw run "<full goal>" --url <start url>`
+1. Start. If the goal already contains the text for fields (user names, emails, search words,
+   names, codes), pass it as `--fill` so Decision does not stop for each field:
+
+   ```bash
+   dpw run "<full goal>" --url <start url> --fill '{"Username":"jane","Email":"jane@example.com","Postal code":"12345"}'
+   ```
+
+   Keys are field labels as a person would read them. A key matches a label that equals it,
+   starts with it or contains it ("Zip" matches "Zip/Postal Code"). Each key is used once per page.
+   Do not put passwords or other secrets in `--fill` unless the user gave them for this task.
 2. Read `status`:
-   - `NEEDS_TYPING`: read `target.label` and `target.currentValue`. Decide the exact text
-     from the user's goal. Run `dpw type <target.ref> "<text>"`. Then run `dpw resume`.
-     Repeat step 2.
+   - `NEEDS_TYPING`: a field needs text that `--fill` did not cover. If `fields` is present, it
+     lists every empty field of that form. Decide the text for all of them from the goal and type
+     them in one call, then resume in the same command:
+
+     ```bash
+     dpw type e3 "Jane" e4 "Doe" e5 "12345" && dpw resume
+     ```
+
+     Leave a field out if the goal does not need it. Repeat step 2.
    - `NEEDS_VERIFICATION`: Decision thinks the goal is done (read `reason` if present). Run `dpw snapshot` (or a
      screenshot) and check the result yourself. Decision output is never proof.
    - `BLOCKED` or `STEP_LIMIT`: Decision cannot continue. Do not run the same `resume` again.
@@ -53,7 +68,8 @@ Use `--session <name>` on every command to run separate browsers.
      3. `dpw resume` so Decision does the rest of the clicks and selects.
      4. If it is BLOCKED again on the same page, finish the remaining steps yourself.
    - `ERROR`: read `error`. Fix configuration or use `snapshot` for fresh refs.
-3. Run `dpw stop` when the task is finished.
+3. Run `dpw stop` when the task is finished. Join the last check and stop in one command:
+   `dpw snapshot && dpw stop`.
 
 Forms: if Decision stops on a form that was changed but not sent, the daemon clicks the
 form's submit button once and continues (`auto: "submit_before_done"` in `history`).
